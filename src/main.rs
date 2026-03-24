@@ -263,7 +263,9 @@ fn main() -> io::Result<()> {
         .expect("Couldn't get test contents. Make sure the specified language actually exists.");
 
     if contents.is_empty() {
-        panic!("Empty test contents.");
+        eprintln!("Error: the provided file or language contains no words to type.");
+        eprintln!("If you specified a file, make sure it isn't empty.");
+        std::process::exit(1);
     }
 
     terminal::enable_raw_mode()?;
@@ -324,10 +326,14 @@ fn main() -> io::Result<()> {
                     modifiers: KeyModifiers::NONE,
                     ..
                 }) => {
+                    let new_contents = opt.gen_contents().expect(
+                        "Couldn't get test contents. Make sure the specified language actually exists.",
+                    );
+                    if new_contents.is_empty() {
+                        continue;
+                    }
                     state = State::Test(Test::new(
-                        opt.gen_contents().expect(
-                            "Couldn't get test contents. Make sure the specified language actually exists.",
-                        ),
+                        new_contents,
                         !opt.no_backtrack,
                         opt.sudden_death,
                         !opt.no_backspace,
@@ -377,4 +383,47 @@ fn main() -> io::Result<()> {
     )?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+
+    fn make_opt(path: PathBuf) -> Opt {
+        Opt {
+            contents: Some(path),
+            debug: false,
+            words: num::NonZeroUsize::new(50).unwrap(),
+            config: None,
+            language_file: None,
+            language: None,
+            list_languages: false,
+            no_backtrack: false,
+            sudden_death: false,
+            no_backspace: false,
+            command: None,
+        }
+    }
+
+    #[test]
+    fn gen_contents_empty_file_returns_empty_vec() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("empty.txt");
+        fs::File::create(&path).unwrap();
+
+        let contents = make_opt(path).gen_contents().unwrap();
+        assert!(contents.is_empty(), "empty file should produce empty vec");
+    }
+
+    #[test]
+    fn gen_contents_nonempty_file_returns_words() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("words.txt");
+        let mut f = fs::File::create(&path).unwrap();
+        writeln!(f, "hello world rust").unwrap();
+
+        let contents = make_opt(path).gen_contents().unwrap();
+        assert!(!contents.is_empty(), "non-empty file should produce words");
+    }
 }
